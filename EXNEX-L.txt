@@ -1,0 +1,129 @@
+model{
+
+## Level 1 #####################################################################################
+
+	for(i in 1:NObs){
+
+		y[i] ~ dnorm(mu[i], prec.re.L1)
+
+		mu[i] <- mu2[patientID[i], 1] + t1[i]*mu2[patientID[i], 2]
+
+		}
+
+## Level 2 #####################################################################################
+
+  for(j in 1:totaln){
+
+    mu2[j,1]<-gamma00[Module[j]]+gamma01[Module[j]]*Trt[j]+U[j,1] # intercepts
+    mu2[j,2]<-gamma10[Module[j]]+theta[Module[j]]*Trt[j]+U[j,2] # slopes
+   
+    U[j, 1:2]~dmnorm(zero,Omega.u)
+
+    }
+
+## Level 3 #####################################################################################
+
+for(k in 1:kMod){
+
+    gamma00[k] <- mu.g00 + re.gamma00[k]
+    gamma01[k] <- mu.g01 + re.gamma01[k]
+    gamma10[k] <- mu.g10 + re.gamma10[k]
+
+    re.gamma00[k] ~ dnorm(0, prec.re.g00) 
+    re.gamma01[k] ~ dnorm(0, prec.re.g01)
+    re.gamma10[k] ~ dnorm(0, prec.re.g10)
+
+###############################################################################################		
+### EXNEX-L Implementation ####################################################################
+###############################################################################################
+
+   # pick theta
+   theta[k] <- mix.theta[exch.ind[k], k]
+		
+   mix.theta[1, k] <- mu.theta + re.theta[k] # exchangeable thetas
+   re.theta[k] ~ dnorm(0, prec.re.t)	
+
+   mix.theta[2, k] ~ dnorm(nex.theta, nex.prec) # nonexchangeable thetas
+
+   exch.ind[k] ~ dcat(pMix[1:2]) # The argument of the dcat distribution is a vector of probabilities for each category.
+		for(j in 1:2){
+			each[k, j] <- equals(exch.ind[k], j)		
+			}
+
+   # Posterior prediction, pCat = P(theta>cutoff.theta)
+   pCat[k, 1] <- 1 - step(cutoff.theta[1] - theta[k]) 
+   pCat[k, 2] <- 1 - step(cutoff.theta[2] - theta[k]) 
+
+	}
+
+############################################################################################### 
+
+## L3 mu priors
+
+  mu.g00 ~ dnorm(Prior.g00[1], prec.g00) 
+  prec.g00 <- pow(Prior.g00[2], -2) 
+
+  mu.g01 ~ dnorm(Prior.g01[1], prec.g01)
+  prec.g01 <- pow(Prior.g01[2], -2)
+  
+  mu.g10 ~ dnorm(Prior.g10[1], prec.g10)
+  prec.g10 <- pow(Prior.g10[2], -2)
+  
+##############################################################################################
+  
+## priors on L3 precision
+
+  prec.re.g00 <- pow(sigma00, -2)
+  sigma00 ~ dnorm(0, prec.sig00)T(0.001,) 
+  prec.sig00 <- pow(PriorL3sigHN[1], -2)
+  
+  prec.re.g01 <- pow(sigma01, -2)
+  sigma01 ~ dnorm(0, prec.sig01)T(0.001,)
+  prec.sig01 <- pow(PriorL3sigHN[2], -2)
+  
+  prec.re.g10 <- pow(sigma10, -2)
+  sigma10 ~ dnorm(0, prec.sig10)T(0.001,)
+  prec.sig10 <- pow(PriorL3sigHN[3], -2)
+
+#################################################################################################### 
+  
+  ## priors on L2 precision - use (1) or (2)
+
+  ## (1) Wishart prior on inverse covariance matrix
+  ## sigma.u <- inverse(Omega.u) ## uncomment to use Wishart prior 
+  ## Omega.u~dwish(R,3) ## uncomment to use Wishart prior 
+
+## (2) Half normal prior on SD
+Omega.u[1,1] <- pow(Tau00, -2) # intercept precision
+Tau00 ~ dnorm(0, prec.int)T(0.001,)
+prec.int <- pow(R[1,1], -2)
+
+Omega.u[1,2] <- 0 # (inverse of intercept covariance)
+Omega.u[2,1] <- 0
+
+Omega.u[2,2] <- pow(Tau10, -2) # slope precision
+Tau10 ~ dnorm(0, prec.slope)T(0.001,)
+prec.slope <- pow(R[2,2], -2)
+
+#################################################################################################### 
+  
+  ## priors on L1 precision
+
+  prec.re.L1 <- pow(sig1, -2)
+  sig1 ~ dnorm(0, prec.sig1)T(0.001,)
+  prec.sig1 <- pow(PriorL1sigHN, -2)
+
+#################################################################################################### 
+
+  ## prior on mu.theta
+  
+  mu.theta ~ dnorm(Prior.mu.theta[1], prec.mu.theta)
+  prec.mu.theta <- pow(Prior.mu.theta[2], -2)
+		
+  prec.re.t <- pow(tau, -2)
+  tau ~ dnorm(0, prec.tau)T(0.001,)
+  prec.tau <- pow(Prior.tau.HN, -2)
+
+  nex.prec <- pow(nex.sig, -2)
+		
+}
