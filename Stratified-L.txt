@@ -1,0 +1,73 @@
+model{
+  
+### Level 1 #####################################################################################
+
+  for(i in 1:NObs){
+
+    y[i] ~ dnorm(mu[i], prec.re.L1) 
+    
+    mu[i] <- mu2[patientID[i], 1] + t1[i]*mu2[patientID[i], 2]  
+
+    		} 
+
+### Level 2 #####################################################################################
+
+for(j in 1:totaln){
+
+    mu2[j,1]<-gamma00+gamma01*Trt[j]+U[j,1] # intercepts
+    mu2[j,2]<-gamma10+theta*Trt[j]+U[j,2] # slopes
+   
+    U[j, 1:2]~dmnorm(zero,Omega.u) # Omega.u is a precision matrix
+    
+    }
+
+### L2 mu priors ################################################################################
+
+  gamma00 ~ dnorm(Prior.g00[1], prec.g00) 
+  prec.g00 <- pow(Prior.g00[2], -2) 
+
+  gamma01 ~ dnorm(Prior.g01[1], prec.g01)
+  prec.g01 <- pow(Prior.g01[2], -2)
+ 
+  gamma10 ~ dnorm(Prior.g10[1], prec.g10)
+  prec.g10 <- pow(Prior.g10[2], -2)
+
+  theta ~ dnorm(Prior.theta, prec.theta) 
+  prec.theta <- pow(Prior.sd.theta, -2) 
+ 
+  # Posterior prediction, pCat = P(theta>cutoff.theta) 
+  pCat[1] <- 1 - step(cutoff.theta[1] - theta)
+  pCat[2] <- 1 - step(cutoff.theta[2] - theta)
+
+#################################################################################################### 
+  
+## priors on L2 precision - use (1) or (2)
+
+  ## (1) Wishart prior on precision matrix
+  ## sigma.u <- inverse(Omega.u) ## uncomment to use Wishart prior 
+  ## Omega.u~dwish(R*3,3) ## uncomment to use Wishart prior 
+
+## (2) Half normal prior on SD
+Omega.u[1,1] <- pow(Tau00, -2) # intercept precision
+Tau00 ~ dnorm(0, prec.int)T(0.001,)
+prec.int <- pow(R[1,1], -2)
+
+Omega.u[1,2] <- 0 
+Omega.u[2,1] <- 0
+
+Omega.u[2,2] <- pow(Tau10, -2) # slope precision
+Tau10 ~ dnorm(0, prec.slope)T(0.001,)
+prec.slope <- pow(R[2,2], -2)
+
+#################################################################################################### 
+  
+## priors on L1 precision
+
+  prec.re.L1 <- pow(sig1, -2)
+  sig1 ~ dnorm(0, prec.sig1)T(0.001,)
+  prec.sig1 <- pow(PriorL1sigHN, -2)
+
+#################################################################################################### 
+  
+}
+

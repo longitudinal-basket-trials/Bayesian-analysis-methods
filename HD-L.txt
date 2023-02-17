@@ -1,0 +1,113 @@
+model{
+
+### Level 1 #####################################################################################
+
+	for(i in 1:NObs){
+			
+		y[1,i] ~ dnorm(mu[1,i], prec.re.L1[Module.long[i]]) 
+		y[2,i] ~ dnorm(mu[2,i], prec.re.L1[Module.long[i]]) 
+
+		mu[1,i] <- mu_1[1,patientID[i]] + t1[1,i]*mu_1[2,patientID[i]] # before borrowing on theta
+		mu[2,i] <- mu_2[1,patientID[i]] + t1[2,i]*mu_2[2,patientID[i]] # after borrowing on theta
+	
+			}
+			
+## Level 2 #####################################################################################
+
+	for(l in 1:totaln){
+
+  		mu_1[1,l]<-gamma00[Module[l]]+gamma01[Module[l]]*Trt[1,l]+Ub[1,l] # intercepts 1
+    		mu_1[2,l]<-gamma10[Module[l]]+theta[1,Module[l]]*Trt[2,l]+Ub[2,l] # slopes (before borrowing on theta)
+   
+		mu_2[1,l]<-gamma00[Module[l]]+gamma01[Module[l]]*Trt[1,l]+Ua[1,l] # intercepts 2
+    		mu_2[2,l]<-gamma10[Module[l]]+theta[2,Module[l]]*Trt[2,l]+Ua[2,l] # slopes (after borrowing on theta)
+  			
+		Ub[1:2, l]~dmnorm(zero,Omega.ub)
+		Ua[1:2, l]~dmnorm(zero,Omega.ua)
+
+			}
+	
+  			for(k in 1:kMod){
+			
+			## L2 mu priors 
+
+   			gamma00[k] ~ dnorm(Prior.g00[k], prec.g00[k])
+			prec.g00[k] <- pow(prior.sd.g00[k], -2)
+ 
+   			gamma01[k] ~ dnorm(Prior.g01[k], prec.g01[k])
+			prec.g01[k] <- pow(prior.sd.g01[k], -2)
+
+  			gamma10[k] ~ dnorm(Prior.g10[k], prec.g10[k])
+			prec.g10[k] <- pow(prior.sd.g10[k], -2)
+
+			## priors on L1 precision
+
+			prec.re.L1[k] <- pow(sig1[k], -2) 
+			sig1[k] ~ dnorm(0, prec.sigL1[k])T(0.001,)
+			prec.sigL1[k] <- pow(PriorL1sigHN[k], -2)
+  
+############################################################################################### 
+####### Implementation of HD-L method #########################################################
+############################################################################################### 
+
+			theta[1, k] ~ dnorm(Prior.theta[k], prec.theta[k])
+			prec.theta[k] <- pow(Prior.sd.theta[k], -2)
+
+			for(q in 1:kMod){
+
+				phiH[q, k] <- sqrt(abs(1/2*pow(sqrt(abs(theta[1, k])) - sqrt(abs(theta[1, q])), 2))) 
+				norm.phiH[q, k] <- exp(-phiH[q, k]/s0)
+				
+				wss[q, k] <- phiH[q, k] - equals(q, k)
+				
+				D01[q, k] ~ dunif(0, 1)
+				nu0[q, k] <- lSlab + D01[q, k]*(uSlab - lSlab)*1/(wss[q, k]+0.0000000001) 
+				nu[q, k] <- nu0[q, k]*step(wss[q, k] - nu0[q, k]) + spike*step(nu0[q, k] - wss[q, k])
+				pred.mu.theta[q, k] ~ dnorm(theta[1, k], nu[q, k])
+				} 
+				
+				sum.norm.phiH[k] <- sum(norm.phiH[k, ]) - 1 
+				
+				for(q in 1:kMod){
+
+					p0[q, k] <- norm.phiH[q, k]/sum.norm.phiH[q]
+					V[q, k] <- 1 - equals(q, k)
+					pmix[q, k] <- inprod(p0[q, k], V[q, k])
+					r.theta.star[q, k] <- inprod(pmix[q, k], pred.mu.theta[q, k])
+
+					}
+				
+			theta[2, k] <- sum(r.theta.star[k, ])
+			
+			# Posterior prediction, pCat = P(theta>cutoff.theta)
+			pCat[k, 1] <- 1 - step(cutoff.theta[1] - theta[2, k])
+			#pCat[k, 2] <- 1 - step(cutoff.theta[2] - theta1[2, k])
+
+					}
+
+## priors on L2 precision  - use (1) or (2)
+		
+	## (1) Wishart prior on precision matrix
+	##sigma.ub <- inverse(Omega.ub)
+  	##Omega.ub~dwish(R*3,3)
+
+	##sigma.ua <- inverse(Omega.ua)
+	##Omega.ua~dwish(R*3,3)
+
+	## (2) Half normal prior on SD
+	Omega.ub[1,1] <- pow(Tau00, -2) # intercept precision 1
+	Omega.ua[1,1] <- pow(Tau00, -2) # intercept precision 2
+	Tau00 ~ dnorm(0, prec.int)T(0.001,)
+	prec.int <- pow(R[1,1], -2)
+
+	Omega.ub[1,2] <- 0 
+	Omega.ub[2,1] <- 0
+	Omega.ua[1,2] <- 0
+	Omega.ua[2,1] <- 0
+
+	Omega.ub[2,2] <- pow(Tau10, -2) # slope precision (before borrowing)
+	Omega.ua[2,2] <- pow(Tau10, -2) # slope precision (after borrowing)
+	Tau10 ~ dnorm(0, prec.slope)T(0.001,)
+	prec.slope <- pow(R[2,2], -2)
+
+}
